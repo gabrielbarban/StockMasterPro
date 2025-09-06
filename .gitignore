@@ -1,0 +1,11 @@
+# Node.js (frontend e backend)
+frontend/node_modules/
+package-lock.json
+
+# Laravel / PHP (backend)
+backend/node_modules/
+
+# Sistema / IDE
+.DS_Store
+.idea/
+.vscode/
