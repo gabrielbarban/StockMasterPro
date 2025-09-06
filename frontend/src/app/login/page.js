@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Package, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthContext';
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const { login } = useAuth();
 
   const handleChange = (e) => {
     setFormData(prev => ({
@@ -43,17 +45,10 @@ export default function LoginPage() {
       console.log('📨 Resposta do login:', { ...data, token: data.token ? data.token.substring(0, 50) + '...' : 'null' });
 
       if (data.success) {
-        console.log('✅ Login bem-sucedido');
-        console.log('💾 Salvando no localStorage...');
+        console.log('✅ Login bem-sucedido - usando AuthContext');
         
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('empresa', JSON.stringify(data.empresa));
-        
-        console.log('✅ Dados salvos no localStorage');
-        console.log('🔐 Token salvo:', localStorage.getItem('token') ? 'SIM' : 'NÃO');
-        console.log('👤 User salvo:', localStorage.getItem('user') ? 'SIM' : 'NÃO');
-        console.log('🏢 Empresa salva:', localStorage.getItem('empresa') ? 'SIM' : 'NÃO');
+        // Usar o método login do AuthContext
+        login(data.user, data.empresa, data.token);
         
         console.log('🔄 Redirecionando para dashboard...');
         router.push('/');
