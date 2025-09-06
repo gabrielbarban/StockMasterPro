@@ -4,7 +4,7 @@ const categoriasController = {
     
     async getAll(req, res) {
         try {
-            const categorias = await Categoria.findAll();
+            const categorias = await Categoria.findAll(req.empresaId);
             res.json({
                 success: true,
                 data: categorias,
@@ -22,7 +22,7 @@ const categoriasController = {
     async getById(req, res) {
         try {
             const { id } = req.params;
-            const categoria = await Categoria.findById(id);
+            const categoria = await Categoria.findById(id, req.empresaId);
             
             if (!categoria) {
                 return res.status(404).json({
@@ -83,7 +83,7 @@ const categoriasController = {
                 });
             }
 
-            const categoria = await Categoria.update(id, req.body);
+            const categoria = await Categoria.update(id, req.body, req.empresaId);
             res.json({
                 success: true,
                 message: 'Categoria atualizada com sucesso',
@@ -100,7 +100,7 @@ const categoriasController = {
     async delete(req, res) {
         try {
             const { id } = req.params;
-            const result = await Categoria.delete(id);
+            const result = await Categoria.delete(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -117,7 +117,7 @@ const categoriasController = {
     async getStats(req, res) {
         try {
             const { id } = req.params;
-            const stats = await Categoria.getStats(id);
+            const stats = await Categoria.getStats(id, req.empresaId);
             
             if (!stats) {
                 return res.status(404).json({

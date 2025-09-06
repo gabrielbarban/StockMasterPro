@@ -10,16 +10,17 @@ class Movimentacao {
                 p.codigo as produto_codigo,
                 c.nome as categoria_nome
             FROM movimentacoes m
-            JOIN produtos p ON m.produto_id = p.id
-            LEFT JOIN categorias c ON p.categoria_id = c.id
+            JOIN produtos p ON m.produto_id = p.id AND p.empresa_id = m.empresa_id
+            LEFT JOIN categorias c ON p.categoria_id = c.id AND c.empresa_id = m.empresa_id
+            WHERE m.empresa_id = ?
         `;
         
         const conditions = [];
-        const params = [];
+        const params = [filters.empresa_id];
         
         if (filters.produto_id) {
             conditions.push('m.produto_id = ?');
-            params.push(filters.produto_id);
+            params.push(parseInt(filters.produto_id));
         }
         
         if (filters.tipo) {
@@ -43,7 +44,7 @@ class Movimentacao {
         }
         
         if (conditions.length > 0) {
-            query += ' WHERE ' + conditions.join(' AND ');
+            query += ' AND ' + conditions.join(' AND ');
         }
         
         query += ' ORDER BY m.data_movimentacao DESC';
@@ -53,10 +54,13 @@ class Movimentacao {
             params.push(parseInt(filters.limit));
         }
         
+        console.log('🔍 Query movimentações:', query);
+        console.log('🔍 Params movimentações:', params);
+        
         return await executeQuery(query, params);
     }
 
-    static async findById(id) {
+    static async findById(id, empresa_id) {
         const query = `
             SELECT 
                 m.*,
@@ -64,25 +68,31 @@ class Movimentacao {
                 p.codigo as produto_codigo
             FROM movimentacoes m
             JOIN produtos p ON m.produto_id = p.id
-            WHERE m.id = ?
+            WHERE m.id = ? AND m.empresa_id = ? AND p.empresa_id = ?
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [id, empresa_id, empresa_id]);
         return result[0] || null;
     }
 
     static async create(movimentacaoData) {
         const { 
             produto_id, tipo, quantidade, motivo, preco_unitario,
-            observacoes, responsavel, documento 
+            observacoes, responsavel, documento, empresa_id 
         } = movimentacaoData;
         
-        console.log('📤 Model create movimentação:', movimentacaoData);
+        // Verificar se o produto pertence à empresa
+        const produtoQuery = 'SELECT id FROM produtos WHERE id = ? AND empresa_id = ?';
+        const produtoResult = await executeQuery(produtoQuery, [produto_id, empresa_id]);
+        
+        if (produtoResult.length === 0) {
+            throw new Error('Produto não encontrado');
+        }
         
         const query = `
             INSERT INTO movimentacoes (
                 produto_id, tipo, quantidade, motivo, preco_unitario,
-                observacoes, responsavel, documento
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                observacoes, responsavel, documento, empresa_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         
         const values = [
@@ -93,39 +103,42 @@ class Movimentacao {
             preco_unitario || 0,
             observacoes || null,
             responsavel || null,
-            documento || null
+            documento || null,
+            empresa_id
         ];
-        
-        console.log('📝 Query create:', query);
-        console.log('📝 Values create:', values);
         
         const result = await executeQuery(query, values);
         
-        // Atualizar estoque
-        await executeQuery(
-            'CALL AtualizarEstoque(?, ?, ?)', 
-            [produto_id, tipo, quantidade]
-        );
+        // Atualizar estoque do produto
+        const updateEstoqueQuery = `
+            UPDATE produtos 
+            SET estoque_atual = estoque_atual ${tipo === 'entrada' ? '+' : '-'} ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND empresa_id = ?
+        `;
         
-        return await this.findById(result.insertId);
+        await executeQuery(updateEstoqueQuery, [quantidade, produto_id, empresa_id]);
+        
+        return await this.findById(result.insertId, empresa_id);
     }
 
-    static async getResumoMovimentacoes(produto_id, dias = 30) {
+    static async getResumoMovimentacoes(produto_id, empresa_id, dias = 30) {
         const query = `
             SELECT 
                 tipo,
                 COUNT(*) as total_movimentacoes,
                 SUM(quantidade) as total_quantidade,
                 AVG(preco_unitario) as preco_medio
-            FROM movimentacoes 
-            WHERE produto_id = ? 
-            AND data_movimentacao >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            FROM movimentacoes m
+            JOIN produtos p ON m.produto_id = p.id
+            WHERE m.produto_id = ? AND p.empresa_id = ?
+            AND m.data_movimentacao >= DATE_SUB(NOW(), INTERVAL ? DAY)
             GROUP BY tipo
         `;
-        return await executeQuery(query, [produto_id, dias]);
+        return await executeQuery(query, [produto_id, empresa_id, dias]);
     }
 
-    static async getMovimentacoesPorPeriodo(data_inicio, data_fim) {
+    static async getMovimentacoesPorPeriodo(empresa_id, data_inicio, data_fim) {
         const query = `
             SELECT 
                 DATE(data_movimentacao) as data,
@@ -133,15 +146,16 @@ class Movimentacao {
                 COUNT(*) as total_movimentacoes,
                 SUM(quantidade) as total_quantidade,
                 SUM(quantidade * preco_unitario) as valor_total
-            FROM movimentacoes 
-            WHERE DATE(data_movimentacao) BETWEEN ? AND ?
+            FROM movimentacoes m
+            JOIN produtos p ON m.produto_id = p.id
+            WHERE p.empresa_id = ? AND DATE(m.data_movimentacao) BETWEEN ? AND ?
             GROUP BY DATE(data_movimentacao), tipo
             ORDER BY data DESC
         `;
-        return await executeQuery(query, [data_inicio, data_fim]);
+        return await executeQuery(query, [empresa_id, data_inicio, data_fim]);
     }
 
-    static async getTopProdutosSaida(limite = 10, dias = 30) {
+    static async getTopProdutosSaida(empresa_id, limite = 10, dias = 30) {
         const query = `
             SELECT 
                 p.id,
@@ -151,16 +165,16 @@ class Movimentacao {
                 COUNT(m.id) as numero_movimentacoes
             FROM movimentacoes m
             JOIN produtos p ON m.produto_id = p.id
-            WHERE m.tipo = 'saida' 
+            WHERE m.tipo = 'saida' AND p.empresa_id = ?
             AND m.data_movimentacao >= DATE_SUB(NOW(), INTERVAL ? DAY)
             GROUP BY p.id, p.nome, p.codigo
             ORDER BY total_saidas DESC
             LIMIT ?
         `;
-        return await executeQuery(query, [dias, limite]);
+        return await executeQuery(query, [empresa_id, dias, limite]);
     }
 
-    static async getEstoquesPorData(data) {
+    static async getEstoquesPorData(empresa_id, data) {
         const query = `
             SELECT 
                 p.id,
@@ -171,20 +185,22 @@ class Movimentacao {
                 COALESCE(saidas.total, 0) as saidas_ate_data
             FROM produtos p
             LEFT JOIN (
-                SELECT produto_id, SUM(quantidade) as total
-                FROM movimentacoes 
-                WHERE tipo = 'entrada' AND DATE(data_movimentacao) <= ?
-                GROUP BY produto_id
+                SELECT m.produto_id, SUM(m.quantidade) as total
+                FROM movimentacoes m
+                JOIN produtos p2 ON m.produto_id = p2.id
+                WHERE m.tipo = 'entrada' AND DATE(m.data_movimentacao) <= ? AND p2.empresa_id = ?
+                GROUP BY m.produto_id
             ) entradas ON p.id = entradas.produto_id
             LEFT JOIN (
-                SELECT produto_id, SUM(quantidade) as total
-                FROM movimentacoes 
-                WHERE tipo = 'saida' AND DATE(data_movimentacao) <= ?
-                GROUP BY produto_id
+                SELECT m.produto_id, SUM(m.quantidade) as total
+                FROM movimentacoes m
+                JOIN produtos p2 ON m.produto_id = p2.id
+                WHERE m.tipo = 'saida' AND DATE(m.data_movimentacao) <= ? AND p2.empresa_id = ?
+                GROUP BY m.produto_id
             ) saidas ON p.id = saidas.produto_id
-            WHERE p.ativo = 1
+            WHERE p.ativo = 1 AND p.empresa_id = ?
         `;
-        return await executeQuery(query, [data, data]);
+        return await executeQuery(query, [data, empresa_id, data, empresa_id, empresa_id]);
     }
 
     static validateData(data) {

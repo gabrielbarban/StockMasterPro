@@ -19,7 +19,6 @@ const produtosController = {
                 }
             });
 
-            // Manter empresa_id sempre
             filters.empresa_id = req.empresaId;
 
             const produtos = await Produto.findAll(filters);
@@ -42,7 +41,7 @@ const produtosController = {
     async getById(req, res) {
         try {
             const { id } = req.params;
-            const produto = await Produto.findById(id);
+            const produto = await Produto.findById(id, req.empresaId);
             
             if (!produto) {
                 return res.status(404).json({
@@ -75,7 +74,8 @@ const produtosController = {
                 });
             }
 
-            const produto = await Produto.create(req.body);
+            const produtoData = { ...req.body, empresa_id: req.empresaId };
+            const produto = await Produto.create(produtoData);
             res.status(201).json({
                 success: true,
                 message: 'Produto criado com sucesso',
@@ -102,7 +102,7 @@ const produtosController = {
                 });
             }
 
-            const produto = await Produto.update(id, req.body);
+            const produto = await Produto.update(id, req.body, req.empresaId);
             res.json({
                 success: true,
                 message: 'Produto atualizado com sucesso',
@@ -119,7 +119,7 @@ const produtosController = {
     async delete(req, res) {
         try {
             const { id } = req.params;
-            const result = await Produto.delete(id);
+            const result = await Produto.delete(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -145,7 +145,7 @@ const produtosController = {
                 });
             }
 
-            const produto = await Produto.updateEstoque(id, quantidade);
+            const produto = await Produto.updateEstoque(id, quantidade, req.empresaId);
             res.json({
                 success: true,
                 message: 'Estoque atualizado com sucesso',
@@ -161,7 +161,7 @@ const produtosController = {
 
     async getBaixoEstoque(req, res) {
         try {
-            const produtos = await Produto.getProdutosBaixoEstoque();
+            const produtos = await Produto.getProdutosBaixoEstoque(req.empresaId);
             
             res.json({
                 success: true,
@@ -182,7 +182,7 @@ const produtosController = {
             const { id } = req.params;
             const { limit } = req.query;
             
-            const movimentacoes = await Produto.getMovimentacoes(id, limit);
+            const movimentacoes = await Produto.getMovimentacoes(id, req.empresaId, limit);
             
             res.json({
                 success: true,

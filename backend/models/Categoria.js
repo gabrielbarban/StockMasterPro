@@ -1,10 +1,8 @@
-// STOCKMASTER PRO - Model de Categorias
 const { executeQuery } = require('../config/database');
 
 class Categoria {
     
-    // Buscar todas as categorias
-    static async findAll() {
+    static async findAll(empresa_id) {
         const query = `
             SELECT 
                 id,
@@ -13,15 +11,15 @@ class Categoria {
                 cor,
                 created_at,
                 updated_at,
-                (SELECT COUNT(*) FROM produtos WHERE categoria_id = categorias.id AND ativo = 1) as total_produtos
+                (SELECT COUNT(*) FROM produtos WHERE categoria_id = categorias.id AND ativo = 1 AND empresa_id = ?) as total_produtos
             FROM categorias 
+            WHERE empresa_id = ?
             ORDER BY nome ASC
         `;
-        return await executeQuery(query);
+        return await executeQuery(query, [empresa_id, empresa_id]);
     }
 
-    // Buscar categoria por ID
-    static async findById(id) {
+    static async findById(id, empresa_id) {
         const query = `
             SELECT 
                 id,
@@ -30,54 +28,52 @@ class Categoria {
                 cor,
                 created_at,
                 updated_at,
-                (SELECT COUNT(*) FROM produtos WHERE categoria_id = categorias.id AND ativo = 1) as total_produtos
+                (SELECT COUNT(*) FROM produtos WHERE categoria_id = categorias.id AND ativo = 1 AND empresa_id = ?) as total_produtos
             FROM categorias 
-            WHERE id = ?
+            WHERE id = ? AND empresa_id = ?
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [empresa_id, id, empresa_id]);
         return result[0] || null;
     }
 
-    // Buscar categoria por nome
-    static async findByName(nome) {
-        const query = 'SELECT * FROM categorias WHERE nome = ?';
-        const result = await executeQuery(query, [nome]);
+    static async findByName(nome, empresa_id) {
+        const query = 'SELECT * FROM categorias WHERE nome = ? AND empresa_id = ?';
+        const result = await executeQuery(query, [nome, empresa_id]);
         return result[0] || null;
     }
 
-    // Criar nova categoria
     static async create(categoriaData) {
-        const { nome, descricao, cor } = categoriaData;
+        const { nome, descricao, cor, empresa_id } = categoriaData;
         
-        // Verificar se já existe
-        const existingCategory = await this.findByName(nome);
+        const existingCategory = await this.findByName(nome, empresa_id);
         if (existingCategory) {
             throw new Error('Já existe uma categoria com este nome');
         }
 
         const query = `
-            INSERT INTO categorias (nome, descricao, cor) 
-            VALUES (?, ?, ?)
+            INSERT INTO categorias (nome, descricao, cor, empresa_id) 
+            VALUES (?, ?, ?, ?)
         `;
-        const result = await executeQuery(query, [nome, descricao, cor || '#3B82F6']);
+        const result = await executeQuery(query, [
+            nome, 
+            descricao || null, 
+            cor || '#3B82F6',
+            empresa_id
+        ]);
         
-        // Retornar a categoria criada
-        return await this.findById(result.insertId);
+        return await this.findById(result.insertId, empresa_id);
     }
 
-    // Atualizar categoria
-    static async update(id, categoriaData) {
+    static async update(id, categoriaData, empresa_id) {
         const { nome, descricao, cor } = categoriaData;
         
-        // Verificar se existe
-        const existingCategory = await this.findById(id);
+        const existingCategory = await this.findById(id, empresa_id);
         if (!existingCategory) {
             throw new Error('Categoria não encontrada');
         }
 
-        // Verificar se o nome já está em uso por outra categoria
         if (nome && nome !== existingCategory.nome) {
-            const categoryWithSameName = await this.findByName(nome);
+            const categoryWithSameName = await this.findByName(nome, empresa_id);
             if (categoryWithSameName) {
                 throw new Error('Já existe uma categoria com este nome');
             }
@@ -86,39 +82,40 @@ class Categoria {
         const query = `
             UPDATE categorias 
             SET nome = COALESCE(?, nome),
-                descricao = COALESCE(?, descricao),
+                descricao = ?,
                 cor = COALESCE(?, cor),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = ? AND empresa_id = ?
         `;
         
-        await executeQuery(query, [nome, descricao, cor, id]);
+        await executeQuery(query, [
+            nome || null,
+            descricao || null,
+            cor || null,
+            id,
+            empresa_id
+        ]);
         
-        // Retornar a categoria atualizada
-        return await this.findById(id);
+        return await this.findById(id, empresa_id);
     }
 
-    // Deletar categoria
-    static async delete(id) {
-        // Verificar se existe
-        const category = await this.findById(id);
+    static async delete(id, empresa_id) {
+        const category = await this.findById(id, empresa_id);
         if (!category) {
             throw new Error('Categoria não encontrada');
         }
 
-        // Verificar se tem produtos associados
         if (category.total_produtos > 0) {
             throw new Error('Não é possível deletar categoria que possui produtos associados');
         }
 
-        const query = 'DELETE FROM categorias WHERE id = ?';
-        await executeQuery(query, [id]);
+        const query = 'DELETE FROM categorias WHERE id = ? AND empresa_id = ?';
+        await executeQuery(query, [id, empresa_id]);
         
         return { message: 'Categoria deletada com sucesso' };
     }
 
-    // Estatísticas da categoria
-    static async getStats(id) {
+    static async getStats(id, empresa_id) {
         const query = `
             SELECT 
                 c.id,
@@ -129,15 +126,14 @@ class Categoria {
                 SUM(p.estoque_atual * p.preco_custo) as valor_total_estoque,
                 AVG(((p.preco_venda - p.preco_custo) / p.preco_custo) * 100) as margem_media
             FROM categorias c
-            LEFT JOIN produtos p ON c.id = p.categoria_id
-            WHERE c.id = ?
+            LEFT JOIN produtos p ON c.id = p.categoria_id AND p.empresa_id = c.empresa_id
+            WHERE c.id = ? AND c.empresa_id = ?
             GROUP BY c.id, c.nome
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [id, empresa_id]);
         return result[0] || null;
     }
 
-    // Validar dados da categoria
     static validateData(data) {
         const errors = [];
 

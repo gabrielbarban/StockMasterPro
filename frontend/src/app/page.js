@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import SimpleLayout from '@/components/layout/SimpleLayout';
 import { RefreshCw, AlertTriangle, TrendingUp } from 'lucide-react';
+import { apiService } from '@/services/api';
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -13,14 +14,15 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/dashboard');
-        if (!response.ok) {
-          throw new Error('Erro ao buscar dados');
-        }
-        const result = await response.json();
-        setData(result.data);
+        console.log('📊 Buscando dados do dashboard...');
+        
+        const response = await apiService.dashboard.get();
+        console.log('✅ Dados do dashboard recebidos:', response.data);
+        
+        setData(response.data.data);
       } catch (err) {
-        setError(err.message);
+        console.error('❌ Erro ao buscar dashboard:', err);
+        setError(err.response?.data?.message || err.message || 'Erro ao buscar dados');
       } finally {
         setLoading(false);
       }

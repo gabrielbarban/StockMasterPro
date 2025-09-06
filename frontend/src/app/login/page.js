@@ -29,6 +29,8 @@ export default function LoginPage() {
     setError('');
 
     try {
+      console.log('📝 Enviando dados de login:', { ...formData, password: '***' });
+      
       const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
@@ -38,16 +40,29 @@ export default function LoginPage() {
       });
 
       const data = await response.json();
+      console.log('📨 Resposta do login:', { ...data, token: data.token ? data.token.substring(0, 50) + '...' : 'null' });
 
       if (data.success) {
+        console.log('✅ Login bem-sucedido');
+        console.log('💾 Salvando no localStorage...');
+        
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('empresa', JSON.stringify(data.empresa));
+        
+        console.log('✅ Dados salvos no localStorage');
+        console.log('🔐 Token salvo:', localStorage.getItem('token') ? 'SIM' : 'NÃO');
+        console.log('👤 User salvo:', localStorage.getItem('user') ? 'SIM' : 'NÃO');
+        console.log('🏢 Empresa salva:', localStorage.getItem('empresa') ? 'SIM' : 'NÃO');
+        
+        console.log('🔄 Redirecionando para dashboard...');
         router.push('/');
       } else {
+        console.log('❌ Erro no login:', data.message);
         setError(data.message);
       }
     } catch (err) {
+      console.error('❌ Erro de conexão:', err);
       setError('Erro ao conectar com o servidor');
     } finally {
       setLoading(false);

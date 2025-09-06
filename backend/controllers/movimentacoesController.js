@@ -4,34 +4,63 @@ const movimentacoesController = {
     
     async getAll(req, res) {
         try {
-            const filters = {
-                produto_id: req.query.produto_id,
-                tipo: req.query.tipo,
-                motivo: req.query.motivo,
-                data_inicio: req.query.data_inicio,
-                data_fim: req.query.data_fim,
-                limit: req.query.limit || 50
-            };
-
-            Object.keys(filters).forEach(key => {
-                if (filters[key] === undefined || filters[key] === '') {
-                    delete filters[key];
-                }
-            });
-
-            const movimentacoes = await Movimentacao.findAll(filters);
+            const mysql = require('mysql2');
             
-            res.json({
-                success: true,
-                data: movimentacoes,
-                total: movimentacoes.length,
-                filters: filters
+            const connection = mysql.createConnection({
+                host: process.env.DB_HOST || 'localhost',
+                user: process.env.DB_USER || 'root',
+                password: process.env.DB_PASSWORD,
+                database: process.env.DB_NAME || 'stockmaster_pro'
             });
+            
+            const empresaId = req.empresaId;
+            
+            // Usar query callback ao invés de execute/promise
+            connection.query(
+                `SELECT 
+                    m.id,
+                    m.produto_id,
+                    m.tipo,
+                    m.quantidade,
+                    m.motivo,
+                    m.preco_unitario,
+                    m.observacoes,
+                    m.responsavel,
+                    m.documento,
+                    m.data_movimentacao,
+                    m.created_at,
+                    p.nome as produto_nome,
+                    p.codigo as produto_codigo
+                FROM movimentacoes m
+                LEFT JOIN produtos p ON m.produto_id = p.id
+                WHERE m.empresa_id = ?
+                ORDER BY m.data_movimentacao DESC 
+                LIMIT 50`,
+                [empresaId],
+                (error, results) => {
+                    connection.end();
+                    
+                    if (error) {
+                        console.error('Erro query callback movimentações:', error);
+                        return res.status(500).json({
+                            success: false,
+                            message: error.message
+                        });
+                    }
+                    
+                    res.json({
+                        success: true,
+                        data: results,
+                        total: results.length
+                    });
+                }
+            );
+            
         } catch (error) {
+            console.error('Erro movimentações controller:', error);
             res.status(500).json({
                 success: false,
-                message: 'Erro ao buscar movimentações',
-                error: error.message
+                message: error.message
             });
         }
     },
@@ -39,7 +68,7 @@ const movimentacoesController = {
     async getById(req, res) {
         try {
             const { id } = req.params;
-            const movimentacao = await Movimentacao.findById(id);
+            const movimentacao = await Movimentacao.findById(id, req.empresaId);
             
             if (!movimentacao) {
                 return res.status(404).json({
@@ -72,16 +101,14 @@ const movimentacoesController = {
                 });
             }
 
-            console.log('📤 Criando movimentação:', req.body);
-
-            const movimentacao = await Movimentacao.create(req.body);
+            const movimentacaoData = { ...req.body, empresa_id: req.empresaId };
+            const movimentacao = await Movimentacao.create(movimentacaoData);
             res.status(201).json({
                 success: true,
                 message: 'Movimentação criada com sucesso',
                 data: movimentacao
             });
         } catch (error) {
-            console.error('❌ Erro no create movimentação:', error);
             res.status(400).json({
                 success: false,
                 message: error.message
@@ -94,7 +121,7 @@ const movimentacoesController = {
             const { produto_id } = req.params;
             const { dias } = req.query;
             
-            const resumo = await Movimentacao.getResumoMovimentacoes(produto_id, dias);
+            const resumo = await Movimentacao.getResumoMovimentacoes(produto_id, req.empresaId, dias);
             
             res.json({
                 success: true,
@@ -120,7 +147,7 @@ const movimentacoesController = {
                 });
             }
 
-            const movimentacoes = await Movimentacao.getMovimentacoesPorPeriodo(data_inicio, data_fim);
+            const movimentacoes = await Movimentacao.getMovimentacoesPorPeriodo(req.empresaId, data_inicio, data_fim);
             
             res.json({
                 success: true,
@@ -140,7 +167,7 @@ const movimentacoesController = {
         try {
             const { limite, dias } = req.query;
             
-            const produtos = await Movimentacao.getTopProdutosSaida(limite, dias);
+            const produtos = await Movimentacao.getTopProdutosSaida(req.empresaId, limite, dias);
             
             res.json({
                 success: true,
@@ -167,7 +194,7 @@ const movimentacoesController = {
                 });
             }
 
-            const estoques = await Movimentacao.getEstoquesPorData(data);
+            const estoques = await Movimentacao.getEstoquesPorData(req.empresaId, data);
             
             res.json({
                 success: true,

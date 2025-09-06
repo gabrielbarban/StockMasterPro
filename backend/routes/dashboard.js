@@ -3,11 +3,24 @@ const router = express.Router();
 const { executeQuery } = require('../config/database');
 const { authMiddleware, tenantMiddleware } = require('../middleware/auth');
 
+// DEBUG: Log de todas as requisições
+router.use((req, res, next) => {
+    console.log('🔍 Dashboard Route - Headers:', {
+        authorization: req.headers.authorization,
+        'content-type': req.headers['content-type']
+    });
+    next();
+});
+
+// Aplicar middlewares de autenticação
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
 router.get('/', async (req, res) => {
     try {
+        console.log('📊 Dashboard - Usuario autenticado:', req.user);
+        console.log('📊 Dashboard - Empresa ID:', req.empresaId);
+        
         const empresaId = req.empresaId;
         
         const queries = {
@@ -51,6 +64,7 @@ router.get('/', async (req, res) => {
         const results = {};
         
         for (const [key, query] of Object.entries(queries)) {
+            console.log(`📊 Executando query: ${key}`);
             results[key] = await executeQuery(query, [empresaId]);
         }
 
@@ -66,12 +80,15 @@ router.get('/', async (req, res) => {
             produtos_criticos: results.produtosCriticos
         };
 
+        console.log('📊 Dashboard response:', dashboard);
+
         res.json({
             success: true,
             data: dashboard
         });
 
     } catch (error) {
+        console.error('❌ Erro no dashboard:', error);
         res.status(500).json({
             success: false,
             message: 'Erro ao buscar dados do dashboard',

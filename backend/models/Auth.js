@@ -11,7 +11,13 @@ class Auth {
             VALUES (?, ?, ?, ?, ?)
         `;
         
-        const result = await executeQuery(query, [nome, cnpj, email, telefone, endereco]);
+        const result = await executeQuery(query, [
+            nome, 
+            cnpj || null, 
+            email || null, 
+            telefone || null, 
+            endereco || null
+        ]);
         return result.insertId;
     }
     
@@ -25,7 +31,13 @@ class Auth {
             VALUES (?, ?, ?, ?, ?)
         `;
         
-        const result = await executeQuery(query, [empresa_id, nome, email, passwordHash, tipo || 'admin']);
+        const result = await executeQuery(query, [
+            empresa_id, 
+            nome, 
+            email, 
+            passwordHash, 
+            tipo || 'admin'
+        ]);
         return await this.findUsuarioById(result.insertId);
     }
     
@@ -103,8 +115,8 @@ class Auth {
         
         const empresaId = await this.createEmpresa({
             nome: empresa_nome,
-            cnpj: empresa_cnpj,
-            email: admin_email
+            cnpj: empresa_cnpj || null,
+            email: admin_email || null
         });
         
         const usuario = await this.createUsuario({

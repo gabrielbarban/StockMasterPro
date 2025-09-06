@@ -1,10 +1,8 @@
-// STOCKMASTER PRO - Model de Fornecedores
 const { executeQuery } = require('../config/database');
 
 class Fornecedor {
     
-    // Buscar todos os fornecedores
-    static async findAll(ativo = null) {
+    static async findAll(empresa_id, ativo = null) {
         let query = `
             SELECT 
                 id,
@@ -17,13 +15,14 @@ class Fornecedor {
                 ativo,
                 created_at,
                 updated_at,
-                (SELECT COUNT(*) FROM produtos WHERE fornecedor_id = fornecedores.id AND ativo = 1) as total_produtos
+                (SELECT COUNT(*) FROM produtos WHERE fornecedor_id = fornecedores.id AND ativo = 1 AND empresa_id = ?) as total_produtos
             FROM fornecedores 
+            WHERE empresa_id = ?
         `;
         
-        const params = [];
+        const params = [empresa_id, empresa_id];
         if (ativo !== null) {
-            query += ' WHERE ativo = ?';
+            query += ' AND ativo = ?';
             params.push(ativo);
         }
         
@@ -32,8 +31,7 @@ class Fornecedor {
         return await executeQuery(query, params);
     }
 
-    // Buscar fornecedor por ID
-    static async findById(id) {
+    static async findById(id, empresa_id) {
         const query = `
             SELECT 
                 id,
@@ -46,29 +44,26 @@ class Fornecedor {
                 ativo,
                 created_at,
                 updated_at,
-                (SELECT COUNT(*) FROM produtos WHERE fornecedor_id = fornecedores.id AND ativo = 1) as total_produtos
+                (SELECT COUNT(*) FROM produtos WHERE fornecedor_id = fornecedores.id AND ativo = 1 AND empresa_id = ?) as total_produtos
             FROM fornecedores 
-            WHERE id = ?
+            WHERE id = ? AND empresa_id = ?
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [empresa_id, id, empresa_id]);
         return result[0] || null;
     }
 
-    // Buscar fornecedor por CNPJ
-    static async findByCnpj(cnpj) {
-        const query = 'SELECT * FROM fornecedores WHERE cnpj = ?';
-        const result = await executeQuery(query, [cnpj]);
+    static async findByCnpj(cnpj, empresa_id) {
+        const query = 'SELECT * FROM fornecedores WHERE cnpj = ? AND empresa_id = ?';
+        const result = await executeQuery(query, [cnpj, empresa_id]);
         return result[0] || null;
     }
 
-    // Buscar fornecedor por email
-    static async findByEmail(email) {
-        const query = 'SELECT * FROM fornecedores WHERE email = ?';
-        const result = await executeQuery(query, [email]);
+    static async findByEmail(email, empresa_id) {
+        const query = 'SELECT * FROM fornecedores WHERE email = ? AND empresa_id = ?';
+        const result = await executeQuery(query, [email, empresa_id]);
         return result[0] || null;
     }
 
-    // Criar novo fornecedor
     static async create(fornecedorData) {
         const { 
             nome, 
@@ -76,20 +71,19 @@ class Fornecedor {
             telefone, 
             cnpj, 
             endereco, 
-            contato_responsavel 
+            contato_responsavel,
+            empresa_id
         } = fornecedorData;
         
-        // Verificar se CNPJ já existe
         if (cnpj) {
-            const existingCnpj = await this.findByCnpj(cnpj);
+            const existingCnpj = await this.findByCnpj(cnpj, empresa_id);
             if (existingCnpj) {
                 throw new Error('Já existe um fornecedor com este CNPJ');
             }
         }
 
-        // Verificar se email já existe
         if (email) {
-            const existingEmail = await this.findByEmail(email);
+            const existingEmail = await this.findByEmail(email, empresa_id);
             if (existingEmail) {
                 throw new Error('Já existe um fornecedor com este email');
             }
@@ -102,25 +96,25 @@ class Fornecedor {
                 telefone, 
                 cnpj, 
                 endereco, 
-                contato_responsavel
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                contato_responsavel,
+                empresa_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
         
         const result = await executeQuery(query, [
             nome, 
-            email, 
-            telefone, 
-            cnpj, 
-            endereco, 
-            contato_responsavel
+            email || null, 
+            telefone || null, 
+            cnpj || null, 
+            endereco || null, 
+            contato_responsavel || null,
+            empresa_id
         ]);
         
-        // Retornar o fornecedor criado
-        return await this.findById(result.insertId);
+        return await this.findById(result.insertId, empresa_id);
     }
 
-    // Atualizar fornecedor
-    static async update(id, fornecedorData) {
+    static async update(id, fornecedorData, empresa_id) {
         const { 
             nome, 
             email, 
@@ -131,23 +125,20 @@ class Fornecedor {
             ativo 
         } = fornecedorData;
         
-        // Verificar se existe
-        const existingFornecedor = await this.findById(id);
+        const existingFornecedor = await this.findById(id, empresa_id);
         if (!existingFornecedor) {
             throw new Error('Fornecedor não encontrado');
         }
 
-        // Verificar se CNPJ já está em uso por outro fornecedor
         if (cnpj && cnpj !== existingFornecedor.cnpj) {
-            const fornecedorWithSameCnpj = await this.findByCnpj(cnpj);
+            const fornecedorWithSameCnpj = await this.findByCnpj(cnpj, empresa_id);
             if (fornecedorWithSameCnpj) {
                 throw new Error('Já existe um fornecedor com este CNPJ');
             }
         }
 
-        // Verificar se email já está em uso por outro fornecedor
         if (email && email !== existingFornecedor.email) {
-            const fornecedorWithSameEmail = await this.findByEmail(email);
+            const fornecedorWithSameEmail = await this.findByEmail(email, empresa_id);
             if (fornecedorWithSameEmail) {
                 throw new Error('Já existe um fornecedor com este email');
             }
@@ -156,80 +147,73 @@ class Fornecedor {
         const query = `
             UPDATE fornecedores 
             SET nome = COALESCE(?, nome),
-                email = COALESCE(?, email),
-                telefone = COALESCE(?, telefone),
-                cnpj = COALESCE(?, cnpj),
-                endereco = COALESCE(?, endereco),
-                contato_responsavel = COALESCE(?, contato_responsavel),
+                email = ?,
+                telefone = ?,
+                cnpj = ?,
+                endereco = ?,
+                contato_responsavel = ?,
                 ativo = COALESCE(?, ativo),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = ? AND empresa_id = ?
         `;
         
         await executeQuery(query, [
-            nome, 
-            email, 
-            telefone, 
-            cnpj, 
-            endereco, 
-            contato_responsavel, 
-            ativo, 
-            id
+            nome || null, 
+            email || null, 
+            telefone || null, 
+            cnpj || null, 
+            endereco || null, 
+            contato_responsavel || null, 
+            ativo !== undefined ? ativo : null, 
+            id,
+            empresa_id
         ]);
         
-        // Retornar o fornecedor atualizado
-        return await this.findById(id);
+        return await this.findById(id, empresa_id);
     }
 
-    // Deletar fornecedor (soft delete)
-    static async delete(id) {
-        // Verificar se existe
-        const fornecedor = await this.findById(id);
+    static async delete(id, empresa_id) {
+        const fornecedor = await this.findById(id, empresa_id);
         if (!fornecedor) {
             throw new Error('Fornecedor não encontrado');
         }
 
-        // Verificar se tem produtos associados
         if (fornecedor.total_produtos > 0) {
             throw new Error('Não é possível deletar fornecedor que possui produtos associados');
         }
 
-        const query = 'DELETE FROM fornecedores WHERE id = ?';
-        await executeQuery(query, [id]);
+        const query = 'DELETE FROM fornecedores WHERE id = ? AND empresa_id = ?';
+        await executeQuery(query, [id, empresa_id]);
         
         return { message: 'Fornecedor deletado com sucesso' };
     }
 
-    // Desativar fornecedor
-    static async deactivate(id) {
-        const query = 'UPDATE fornecedores SET ativo = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-        await executeQuery(query, [id]);
-        return await this.findById(id);
+    static async deactivate(id, empresa_id) {
+        const query = 'UPDATE fornecedores SET ativo = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND empresa_id = ?';
+        await executeQuery(query, [id, empresa_id]);
+        return await this.findById(id, empresa_id);
     }
 
-    // Ativar fornecedor
-    static async activate(id) {
-        const query = 'UPDATE fornecedores SET ativo = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-        await executeQuery(query, [id]);
-        return await this.findById(id);
+    static async activate(id, empresa_id) {
+        const query = 'UPDATE fornecedores SET ativo = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND empresa_id = ?';
+        await executeQuery(query, [id, empresa_id]);
+        return await this.findById(id, empresa_id);
     }
 
-    // Buscar produtos do fornecedor
-    static async getProdutos(id) {
+    static async getProdutos(id, empresa_id) {
         const query = `
             SELECT 
                 p.*,
                 c.nome as categoria_nome
             FROM produtos p
             LEFT JOIN categorias c ON p.categoria_id = c.id
-            WHERE p.fornecedor_id = ?
+            WHERE p.fornecedor_id = ? AND p.empresa_id = ?
             ORDER BY p.nome ASC
         `;
-        return await executeQuery(query, [id]);
+        return await executeQuery(query, [id, empresa_id]);
     }
 
-    // Estatísticas do fornecedor
-    static async getStats(id) {
+    static async getStats(id, empresa_id) {
         const query = `
             SELECT 
                 f.id,
@@ -239,15 +223,14 @@ class Fornecedor {
                 SUM(p.estoque_atual * p.preco_custo) as valor_total_estoque,
                 AVG(p.preco_custo) as preco_medio_produtos
             FROM fornecedores f
-            LEFT JOIN produtos p ON f.id = p.fornecedor_id
-            WHERE f.id = ?
+            LEFT JOIN produtos p ON f.id = p.fornecedor_id AND p.empresa_id = f.empresa_id
+            WHERE f.id = ? AND f.empresa_id = ?
             GROUP BY f.id, f.nome
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [id, empresa_id]);
         return result[0] || null;
     }
 
-    // Validar dados do fornecedor
     static validateData(data) {
         const errors = [];
 
@@ -274,7 +257,6 @@ class Fornecedor {
         return errors;
     }
 
-    // Formatar CNPJ
     static formatCnpj(cnpj) {
         if (!cnpj) return null;
         const numbers = cnpj.replace(/\D/g, '');
@@ -282,7 +264,6 @@ class Fornecedor {
         return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
     }
 
-    // Formatar telefone
     static formatTelefone(telefone) {
         if (!telefone) return null;
         const numbers = telefone.replace(/\D/g, '');

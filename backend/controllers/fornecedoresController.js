@@ -5,7 +5,7 @@ const fornecedoresController = {
     async getAll(req, res) {
         try {
             const { ativo } = req.query;
-            const fornecedores = await Fornecedor.findAll(ativo);
+            const fornecedores = await Fornecedor.findAll(req.empresaId, ativo);
             
             res.json({
                 success: true,
@@ -24,7 +24,7 @@ const fornecedoresController = {
     async getById(req, res) {
         try {
             const { id } = req.params;
-            const fornecedor = await Fornecedor.findById(id);
+            const fornecedor = await Fornecedor.findById(id, req.empresaId);
             
             if (!fornecedor) {
                 return res.status(404).json({
@@ -92,7 +92,6 @@ const fornecedoresController = {
                 });
             }
 
-            // Limpar dados undefined antes de enviar para o model
             const dadosLimpos = {};
             Object.keys(req.body).forEach(key => {
                 const value = req.body[key];
@@ -101,8 +100,6 @@ const fornecedoresController = {
                 }
             });
 
-            console.log('📤 Controller - Dados limpos:', dadosLimpos);
-
             if (req.body.cnpj) {
                 dadosLimpos.cnpj = Fornecedor.formatCnpj(req.body.cnpj);
             }
@@ -110,14 +107,13 @@ const fornecedoresController = {
                 dadosLimpos.telefone = Fornecedor.formatTelefone(req.body.telefone);
             }
 
-            const fornecedor = await Fornecedor.update(id, dadosLimpos);
+            const fornecedor = await Fornecedor.update(id, dadosLimpos, req.empresaId);
             res.json({
                 success: true,
                 message: 'Fornecedor atualizado com sucesso',
                 data: fornecedor
             });
         } catch (error) {
-            console.error('❌ Erro no controller update:', error);
             res.status(400).json({
                 success: false,
                 message: error.message
@@ -128,7 +124,7 @@ const fornecedoresController = {
     async delete(req, res) {
         try {
             const { id } = req.params;
-            const result = await Fornecedor.delete(id);
+            const result = await Fornecedor.delete(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -145,7 +141,7 @@ const fornecedoresController = {
     async deactivate(req, res) {
         try {
             const { id } = req.params;
-            const fornecedor = await Fornecedor.deactivate(id);
+            const fornecedor = await Fornecedor.deactivate(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -163,7 +159,7 @@ const fornecedoresController = {
     async activate(req, res) {
         try {
             const { id } = req.params;
-            const fornecedor = await Fornecedor.activate(id);
+            const fornecedor = await Fornecedor.activate(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -181,7 +177,7 @@ const fornecedoresController = {
     async getProdutos(req, res) {
         try {
             const { id } = req.params;
-            const produtos = await Fornecedor.getProdutos(id);
+            const produtos = await Fornecedor.getProdutos(id, req.empresaId);
             
             res.json({
                 success: true,
@@ -200,7 +196,7 @@ const fornecedoresController = {
     async getStats(req, res) {
         try {
             const { id } = req.params;
-            const stats = await Fornecedor.getStats(id);
+            const stats = await Fornecedor.getStats(id, req.empresaId);
             
             if (!stats) {
                 return res.status(404).json({

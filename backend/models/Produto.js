@@ -18,12 +18,13 @@ class Produto {
                     ELSE 'OK'
                 END as status_estoque
             FROM produtos p
-            LEFT JOIN categorias c ON p.categoria_id = c.id
-            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id
+            LEFT JOIN categorias c ON p.categoria_id = c.id AND c.empresa_id = p.empresa_id
+            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id AND f.empresa_id = p.empresa_id
+            WHERE p.empresa_id = ?
         `;
         
         const conditions = [];
-        const params = [];
+        const params = [filters.empresa_id];
         
         if (filters.ativo !== undefined) {
             conditions.push('p.ativo = ?');
@@ -54,7 +55,7 @@ class Produto {
         }
         
         if (conditions.length > 0) {
-            query += ' WHERE ' + conditions.join(' AND ');
+            query += ' AND ' + conditions.join(' AND ');
         }
         
         query += ' ORDER BY p.nome ASC';
@@ -62,7 +63,7 @@ class Produto {
         return await executeQuery(query, params);
     }
 
-    static async findById(id) {
+    static async findById(id, empresa_id) {
         const query = `
             SELECT 
                 p.*,
@@ -71,17 +72,17 @@ class Produto {
                 (p.preco_venda - p.preco_custo) as margem_absoluta,
                 ROUND(((p.preco_venda - p.preco_custo) / p.preco_custo * 100), 2) as margem_percentual
             FROM produtos p
-            LEFT JOIN categorias c ON p.categoria_id = c.id
-            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id
-            WHERE p.id = ?
+            LEFT JOIN categorias c ON p.categoria_id = c.id AND c.empresa_id = p.empresa_id
+            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id AND f.empresa_id = p.empresa_id
+            WHERE p.id = ? AND p.empresa_id = ?
         `;
-        const result = await executeQuery(query, [id]);
+        const result = await executeQuery(query, [id, empresa_id]);
         return result[0] || null;
     }
 
-    static async findByCodigo(codigo) {
-        const query = 'SELECT * FROM produtos WHERE codigo = ?';
-        const result = await executeQuery(query, [codigo]);
+    static async findByCodigo(codigo, empresa_id) {
+        const query = 'SELECT * FROM produtos WHERE codigo = ? AND empresa_id = ?';
+        const result = await executeQuery(query, [codigo, empresa_id]);
         return result[0] || null;
     }
 
@@ -92,11 +93,8 @@ class Produto {
             estoque_maximo, unidade_medida, empresa_id
         } = produtoData;
         
-        const existingProduto = await executeQuery(
-            'SELECT id FROM produtos WHERE codigo = ? AND empresa_id = ?', 
-            [codigo, empresa_id]
-        );
-        if (existingProduto.length > 0) {
+        const existingProduto = await this.findByCodigo(codigo, empresa_id);
+        if (existingProduto) {
             throw new Error('Já existe um produto com este código');
         }
 
@@ -109,88 +107,110 @@ class Produto {
         `;
         
         const result = await executeQuery(query, [
-            codigo, nome, descricao, categoria_id, fornecedor_id,
-            preco_custo, preco_venda, estoque_atual || 0, 
-            estoque_minimo || 1, estoque_maximo || 100, 
-            unidade_medida || 'un', empresa_id
+            codigo, 
+            nome, 
+            descricao || null, 
+            categoria_id || null, 
+            fornecedor_id || null,
+            preco_custo || 0, 
+            preco_venda || 0, 
+            estoque_atual || 0, 
+            estoque_minimo || 1, 
+            estoque_maximo || 100, 
+            unidade_medida || 'un', 
+            empresa_id
         ]);
         
         return await this.findById(result.insertId, empresa_id);
     }
 
-    static async update(id, produtoData) {
-        const existingProduto = await this.findById(id);
+    static async update(id, produtoData, empresa_id) {
+        const existingProduto = await this.findById(id, empresa_id);
         if (!existingProduto) {
             throw new Error('Produto não encontrado');
         }
 
         if (produtoData.codigo && produtoData.codigo !== existingProduto.codigo) {
-            const produtoWithSameCodigo = await this.findByCodigo(produtoData.codigo);
+            const produtoWithSameCodigo = await this.findByCodigo(produtoData.codigo, empresa_id);
             if (produtoWithSameCodigo) {
                 throw new Error('Já existe um produto com este código');
             }
         }
 
-        const fields = Object.keys(produtoData).map(key => `${key} = ?`).join(', ');
-        const values = Object.values(produtoData);
+        const fields = [];
+        const values = [];
+        
+        Object.keys(produtoData).forEach(key => {
+            if (produtoData[key] !== undefined) {
+                fields.push(`${key} = ?`);
+                values.push(produtoData[key] === '' ? null : produtoData[key]);
+            }
+        });
+        
+        if (fields.length === 0) {
+            return existingProduto;
+        }
+        
+        fields.push('updated_at = CURRENT_TIMESTAMP');
+        values.push(id, empresa_id);
         
         const query = `
             UPDATE produtos 
-            SET ${fields}, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET ${fields.join(', ')}
+            WHERE id = ? AND empresa_id = ?
         `;
         
-        await executeQuery(query, [...values, id]);
-        return await this.findById(id);
+        await executeQuery(query, values);
+        return await this.findById(id, empresa_id);
     }
 
-    static async delete(id) {
-        const produto = await this.findById(id);
+    static async delete(id, empresa_id) {
+        const produto = await this.findById(id, empresa_id);
         if (!produto) {
             throw new Error('Produto não encontrado');
         }
 
-        await executeQuery('DELETE FROM produtos WHERE id = ?', [id]);
+        await executeQuery('DELETE FROM produtos WHERE id = ? AND empresa_id = ?', [id, empresa_id]);
         return { message: 'Produto deletado com sucesso' };
     }
 
-    static async updateEstoque(id, novaQuantidade) {
+    static async updateEstoque(id, novaQuantidade, empresa_id) {
         const query = `
             UPDATE produtos 
             SET estoque_atual = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            WHERE id = ? AND empresa_id = ?
         `;
-        await executeQuery(query, [novaQuantidade, id]);
-        return await this.findById(id);
+        await executeQuery(query, [novaQuantidade, id, empresa_id]);
+        return await this.findById(id, empresa_id);
     }
 
-    static async getProdutosBaixoEstoque() {
+    static async getProdutosBaixoEstoque(empresa_id) {
         const query = `
             SELECT 
                 p.*,
                 c.nome as categoria_nome,
                 f.nome as fornecedor_nome
             FROM produtos p
-            LEFT JOIN categorias c ON p.categoria_id = c.id
-            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id
-            WHERE p.estoque_atual <= p.estoque_minimo AND p.ativo = 1
+            LEFT JOIN categorias c ON p.categoria_id = c.id AND c.empresa_id = p.empresa_id
+            LEFT JOIN fornecedores f ON p.fornecedor_id = f.id AND f.empresa_id = p.empresa_id
+            WHERE p.estoque_atual <= p.estoque_minimo AND p.ativo = 1 AND p.empresa_id = ?
             ORDER BY (p.estoque_atual - p.estoque_minimo) ASC
         `;
-        return await executeQuery(query);
+        return await executeQuery(query, [empresa_id]);
     }
 
-    static async getMovimentacoes(id, limit = 20) {
+    static async getMovimentacoes(id, empresa_id, limit = 20) {
         const query = `
             SELECT 
                 m.*,
                 p.nome as produto_nome
             FROM movimentacoes m
             JOIN produtos p ON m.produto_id = p.id
-            WHERE m.produto_id = ?
+            WHERE m.produto_id = ? AND p.empresa_id = ?
             ORDER BY m.data_movimentacao DESC
             LIMIT ?
         `;
-        return await executeQuery(query, [id, limit]);
+        return await executeQuery(query, [id, empresa_id, limit]);
     }
 
     static validateData(data) {

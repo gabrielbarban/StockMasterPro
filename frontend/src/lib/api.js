@@ -11,6 +11,22 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     console.log(`🔥 ${config.method?.toUpperCase()} ${config.url}`);
+    
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      console.log('🔐 Token do localStorage:', token ? token.substring(0, 50) + '...' : 'null');
+      
+      if (token) {
+        if (!config.headers) {
+          config.headers = {};
+        }
+        config.headers['Authorization'] = `Bearer ${token}`;
+        console.log('✅ Header Authorization adicionado:', config.headers['Authorization'].substring(0, 50) + '...');
+      } else {
+        console.log('❌ Nenhum token encontrado no localStorage');
+      }
+    }
+    
     return config;
   },
   (error) => {
@@ -35,6 +51,13 @@ api.interceptors.response.use(
       responseData: data,
       requestData: requestData ? JSON.parse(requestData) : null
     });
+    
+    if (status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('empresa');
+      window.location.href = '/login';
+    }
     
     return Promise.reject(error);
   }
