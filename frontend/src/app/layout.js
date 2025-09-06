@@ -1,5 +1,6 @@
 import './globals.css'
 import { AuthProvider } from '@/components/auth/AuthContext'
+import { ThemeProvider } from '@/components/theme/ThemeContext'
 
 export const metadata = {
   title: 'StockMaster Pro',
@@ -10,9 +11,11 @@ export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
       <body>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

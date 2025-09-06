@@ -77,7 +77,10 @@ export default function LoginPage() {
           <h2 className="mt-6 text-3xl font-bold text-gray-900">
             StockMaster Pro
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-0 text-sm font-semibold text-blue-700 tracking-wide">
+            Controle Inteligente. Resultados Reais.
+          </p>
+          <p className="mt-20 text-sm text-gray-600">
             Entre na sua conta para acessar o sistema
           </p>
         </div>
